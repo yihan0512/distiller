@@ -35,6 +35,9 @@ import csv
 import distiller
 from .scheduler import CompressionScheduler
 
+import pandas as pd
+import ipdb
+
 msglogger = logging.getLogger()
 
 
@@ -137,10 +140,15 @@ def sensitivities_to_png(sensitivities, fname):
               "Skipping the PNG file generation")
         return
 
+    plt.figure(figsize=(16, 12))
+
     msglogger.info("Generating sensitivity graph")
 
     for param_name, sensitivity in sensitivities.items():
-        sense = [values[1] for sparsity, values in sensitivity.items()]
+        try:
+            sense = [values[0] for sparsity, values in sensitivity.items()]
+        except:
+            ipdb.set_trace()
         sparsities = [sparsity for sparsity, values in sensitivity.items()]
         plt.plot(sparsities, sense, label=param_name)
 
@@ -165,3 +173,39 @@ def sensitivities_to_csv(sensitivities, fname):
         for param_name, sensitivity in sensitivities.items():
             for sparsity, values in sensitivity.items():
                 writer.writerow([param_name] + [sparsity] + list(values))
+
+def csv_to_sensitivities(fname):
+    df = pd.read_csv(fname)
+    sensitivities = {}
+
+    # init the intermediate dict
+    sensitivity = {}
+    current_parameter = df.iloc[0]['parameter']
+    sensitivity[df.iloc[0]['sparsity']] = [df.iloc[0]['top1'], df.iloc[0]['top5'],df.iloc[0]['loss']]
+
+    for i in range(1, df.shape[0]):
+        if df.iloc[i]['parameter'] == current_parameter: # continue fill in the same parameter
+            value = [df.iloc[i]['top1'], df.iloc[i]['top5'],df.iloc[i]['loss']]
+            sensitivity[df.iloc[i]['sparsity']] = value
+        else: # start a new parameter
+            sensitivities[current_parameter] = sensitivity
+            sensitivity = {}
+            current_parameter = df.iloc[i]['parameter']
+            sensitivity[df.iloc[i]['sparsity']] = [df.iloc[i]['top1'], df.iloc[i]['top5'],df.iloc[0]['loss']]
+    
+    return sensitivities
+
+def sensitivities_analysis(sensitivities, desired_top1):
+    """
+        desired_top1: in percentage
+    """
+    for param_name, sensitivity in sensitivities.items():
+        print('-------------------analyzing {}-----------------\n'.format(param_name))
+        sense = [values[0] for sparsity, values in sensitivity.items()]
+        sparsities = [sparsity for sparsity, values in sensitivity.items()]
+        print(sense)
+        print(sparsities)
+        for accu, sparcity in zip(sense, sparsities):
+            if accu < desired_top1:
+                print('Found accuracy {} with sparsity {}!'.format(accu, sparcity))
+                break

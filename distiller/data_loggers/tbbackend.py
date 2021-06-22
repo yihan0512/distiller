@@ -31,6 +31,7 @@ class TBBackend(object):
         self.writers = []
         self.log_dir = log_dir
         self.writers.append(tf.summary.FileWriter(log_dir))
+        # self.writers.append(tf.summary.create_file_writer(log_dir))
 
     def scalar_summary(self, tag, scalar, step):
         """From TF documentation:
@@ -39,6 +40,8 @@ class TBBackend(object):
         """
         summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=scalar)])
         self.writers[0].add_summary(summary, step)
+        # with self.writers[0].as_default():
+        #     tf.summary.scalar(tag, scalar, step=step)
 
     def list_summary(self, tag, list, step, multi_graphs):
         """Log a relatively small list of scalars.

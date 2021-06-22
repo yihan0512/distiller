@@ -14,8 +14,14 @@
 # limitations under the License.
 #
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from collections import OrderedDict
+import os
+
+import ipdb
 
 __all__ = ['simplenet_cifar']
 
@@ -42,9 +48,20 @@ class Simplenet(nn.Module):
         x = self.relu_fc1(self.fc1(x))
         x = self.relu_fc2(self.fc2(x))
         x = self.fc3(x)
+        # print('The hidden vector dimension is {}'.format(x.shape))
         return x
 
+def update_ckpt(ckpt):
+    new_state_dict = OrderedDict()
+    for key, value in ckpt['state_dict'].items():
+        new_state_dict[key.replace('module.', '')] = value
+    ckpt['state_dict'] = new_state_dict
+    return ckpt
 
 def simplenet_cifar():
     model = Simplenet()
+    # pth = '/home/ru4n6/Documents/distiller/examples/classifier_compression/logs'
+    # ckpt = torch.load(os.path.join(pth, 'simplenet-baseline/best.pth.tar'))
+    # ckpt = update_ckpt(ckpt)
+    # model.load_state_dict(ckpt['state_dict'])
     return model

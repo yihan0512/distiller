@@ -39,6 +39,13 @@ import math
 import torch.utils.model_zoo as model_zoo
 from distiller.modules import EltwiseAdd
 
+import torch
+
+import os
+from collections import OrderedDict
+
+import ipdb
+
 
 __all__ = ['resnet20_cifar', 'resnet32_cifar', 'resnet44_cifar', 'resnet56_cifar']
 
@@ -149,9 +156,20 @@ class ResNetCifar(nn.Module):
 
         return x
 
+def update_ckpt(ckpt):
+    new_state_dict = OrderedDict()
+    for key, value in ckpt['state_dict'].items():
+        new_state_dict[key.replace('module.', '')] = value
+    ckpt['state_dict'] = new_state_dict
+    return ckpt
 
 def resnet20_cifar(**kwargs):
     model = ResNetCifar(BasicBlock, [3, 3, 3], **kwargs)
+    # ipdb.set_trace()
+    # pth = '/home/ru4n6/Documents/distiller/examples/classifier_compression/logs'
+    # ckpt = torch.load(os.path.join(pth, 'resnet20-best-1/best.pth.tar'))
+    # ckpt = update_ckpt(ckpt)
+    # model.load_state_dict(ckpt['state_dict'])
     return model
 
 def resnet32_cifar(**kwargs):

@@ -1,0 +1,70 @@
+#r time python3 compress_classifier.py -a=resnet56_cifar -p=50 ../../../data.cifar10 --epochs=70 --lr=0.1 --compress=../pruning_filters_for_efficient_convnets/resnet56_cifar_filter_rank.yaml --resume-from=checkpoint.resnet56_cifar_baseline.pth.tar  --reset-optimizer --vs=0
+
+version: 1
+pruners:
+  my_filter_pruner_1:
+    class: 'L1RankedStructureParameterPruner'
+    group_type: Filters
+    desired_sparsity: 0.9
+    weights: [
+        module.layer1.0.conv1.weight,
+        module.layer1.1.conv1.weight,
+        module.layer1.2.conv1.weight,
+    ]
+
+  my_filter_pruner_2:
+    class: 'L1RankedStructureParameterPruner'
+    group_type: Filters
+    desired_sparsity: 0.9
+    weights: [
+        module.layer2.0.conv1.weight,
+        module.layer2.1.conv1.weight,
+        module.layer2.2.conv1.weight,
+    ]
+    
+  my_filter_pruner_3:
+    class: 'L1RankedStructureParameterPruner'
+    group_type: Filters
+    desired_sparsity: 0.9
+    weights: [
+        module.layer3.0.conv1.weight,
+        module.layer3.1.conv1.weight,
+        module.layer3.2.conv1.weight,
+    ]
+
+
+extensions:
+  net_thinner:
+      class: 'FilterRemover'
+      thinning_func_str: remove_filters
+      arch: 'doublenet_conn_cifar'
+      dataset: 'cifar10'
+
+lr_schedulers:
+   exp_finetuning_lr:
+     class: ExponentialLR
+     gamma: 0.95
+
+
+policies:
+  - pruner:
+      instance_name: my_filter_pruner_1
+    epochs: [0]
+
+  - pruner:
+      instance_name: my_filter_pruner_2
+    epochs: [0]
+
+  - pruner:
+      instance_name: my_filter_pruner_3
+    epochs: [0]
+
+  - extension:
+      instance_name: net_thinner
+    epochs: [0]
+
+  - lr_scheduler:
+      instance_name: exp_finetuning_lr
+    starting_epoch: 10
+    ending_epoch: 300
+    frequency: 1

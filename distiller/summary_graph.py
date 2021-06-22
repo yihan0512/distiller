@@ -26,6 +26,7 @@ from collections import OrderedDict, defaultdict
 from collections.abc import MutableSequence, Iterable
 msglogger = logging.getLogger()
 
+import ipdb
 
 def onnx_name_2_pytorch_name(name):
     # Convert a layer's name from an ONNX name, to a PyTorch name
@@ -139,7 +140,14 @@ class SummaryGraph(object):
                 module_name = onnx_name_2_pytorch_name(new_op['orig-name'])
 
                 # Get name from before conversion to DistillerModuleList
-                module_name = converted_module_names_map[module_name]
+                try:
+                    module_name = converted_module_names_map[module_name]
+                except:
+                    ipdb.set_trace()
+
+                # print('op name:')
+                # print(new_op['name'])
+                # print(module_name)
 
                 if len(module_name) == 0:
                     # Special case where the module name is an empty string - this happens
@@ -190,6 +198,8 @@ class SummaryGraph(object):
                     self.edges.append(SummaryGraph.Edge(new_op['name'], output.debugName()))
 
                 new_op['attrs'] = OrderedDict([(attr_name, node[attr_name]) for attr_name in node.attributeNames()])
+
+        # ipdb.set_trace()
 
         self.__merge_pad_avgpool()
         self.add_macs_attr()

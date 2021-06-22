@@ -1,0 +1,47 @@
+lr_schedulers:
+  training_lr:
+    class: StepLR
+    step_size: 45
+    gamma: 0.10
+
+regularizers:
+  Channels_groups_regularizer:
+    class: GroupLassoRegularizer
+    reg_regims:
+      module.deepnet.layer1.0.conv2.weight: [0.0014, Channels]
+      module.deepnet.layer1.1.conv2.weight: [0.0014, Channels]
+      module.deepnet.layer1.2.conv2.weight: [0.0012, Channels]
+      module.deepnet.layer2.0.conv2.weight: [0.0008, Channels]   # sensitive
+      module.deepnet.layer2.1.conv2.weight: [0.0014, Channels]
+      module.deepnet.layer2.2.conv2.weight: [0.0014, Channels]
+      module.deepnet.layer3.0.conv2.weight: [0.0008, Channels]  # sensitive
+      module.deepnet.layer3.1.conv2.weight: [0.0014, Channels]
+      #module.layer3.2.conv2.weight: [0.0006, Channels] # very sensitive
+    threshold_criteria: Mean_Abs
+
+extensions:
+  net_thinner:
+      class: 'ChannelRemover'
+      thinning_func_str: remove_channels
+      arch: 'resnet20_cifar'
+      dataset: 'cifar10'
+
+policies:
+  - lr_scheduler:
+      instance_name: training_lr
+    starting_epoch: 45
+    ending_epoch: 300
+    frequency: 1
+
+# After completeing the regularization, we perform network thinning and exit.
+  - extension:
+      instance_name: net_thinner
+    epochs: [179]
+
+  - regularizer:
+      instance_name: Channels_groups_regularizer
+      args:
+        keep_mask: True
+    starting_epoch: 0
+    ending_epoch: 180
+    frequency: 1

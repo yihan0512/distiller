@@ -26,6 +26,7 @@ data-dependency between the modules in the PyTorch network.  This entire process
 documented in a different place.
 """
 
+import ipdb
 import math
 import logging
 from collections import namedtuple
@@ -365,6 +366,7 @@ def create_thinning_recipe_filters(sgraph, model, zeros_mask_dict):
     layers = {mod_name: m for mod_name, m in model.named_modules()}
 
     for layer_name, param_name, param in sgraph.named_params_layers():
+        # ipdb.set_trace()
         # We are only interested in 4D weights
         if param.dim() != 4:
             continue
@@ -374,7 +376,17 @@ def create_thinning_recipe_filters(sgraph, model, zeros_mask_dict):
         nonzero_filters = torch.nonzero(filter_view.abs().sum(dim=1))
         num_nnz_filters = nonzero_filters.nelement()
         if num_nnz_filters == 0:
-            raise ValueError("Trying to set zero filters for parameter %s is not allowed" % param_name)
+            ipdb.set_trace()
+            # raise ValueError("Trying to set zero filters for parameter %s is not allowed" % param_name)
+            print('Trying to set zero filters for parameter {} is not allowed'.format(param_name))
+
+            # update the filters     
+            nonzero_filters = torch.tensor([[0]], dtype=torch.int64).to(nonzero_filters.device)
+            num_nnz_filters = nonzero_filters.nelement()
+            mask_tensor = zeros_mask_dict[param_name].mask.clone()
+            mask_tensor[0, :, :, :] = 1
+            zeros_mask_dict[param_name].mask = mask_tensor
+            
         # If there are non-zero filters in this tensor then continue to next tensor
         if num_filters <= num_nnz_filters:
             msglogger.debug("Skipping {} shape={}".format(param_name, param.shape))
@@ -383,6 +395,7 @@ def create_thinning_recipe_filters(sgraph, model, zeros_mask_dict):
         msglogger.debug("In tensor %s found %d/%d zero filters", param_name,
                         num_filters - num_nnz_filters, num_filters)
         handle_layer(layer_name, param_name, num_nnz_filters)
+    # ipdb.set_trace()
     return thinning_recipe
 
 
