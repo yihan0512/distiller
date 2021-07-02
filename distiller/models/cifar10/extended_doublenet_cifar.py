@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import os
+import sys
 
 import math
 from .resnet_cifar import conv3x3, BasicBlock
@@ -28,15 +29,12 @@ from collections import OrderedDict
 import ipdb
 
 __all__ = [
-            'doublenet_cifar',
             'extended_doublenet_cifar',
             'extended_doublenet_cifar_shortcuts_pretrained',
-            'doublenet_indep_cifar', 
             'extended_doublenet_indep_cifar', 
-            'doublenet_conn_cifar', 
+            'extended_doublenet_indep_cifar_shortcuts_pretrained', 
             'extended_doublenet_conn_cifar', 
-            'doublenet_cifar_deepnet_pretrained', 
-            'doublenet_cifar_shortcuts_pretrained',
+            'extended_doublenet_conn_cifar_shortcuts_pretrained', 
            ]
 
 
@@ -47,101 +45,6 @@ def conv3x3(in_planes, out_planes, stride=1):
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
 
-class DoubleNetCifar(nn.Module):
-
-    def __init__(self, block, layers, num_classes=NUM_CLASSES):
-        self.nlayers = 0
-        # Each layer manages its own gates
-        self.layer_gates = []
-        for layer in range(3):
-            # For each of the 3 layers, create block gates: each block has two layers
-            self.layer_gates.append([])  # [True, True] * layers[layer])
-            for blk in range(layers[layer]):
-                self.layer_gates[layer].append([True, True])
-
-        self.inplanes = 16  # 64
-        super(DoubleNetCifar, self).__init__()
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(self.layer_gates[0], block, 16, layers[0])
-        self.layer2 = self._make_layer(self.layer_gates[1], block, 32, layers[1], stride=2)
-        self.layer3 = self._make_layer(self.layer_gates[2], block, 64, layers[2], stride=2)
-        self.avgpool = nn.AvgPool2d(8, stride=1)
-        self.fc = nn.Linear(64 * block.expansion, num_classes)
-        self.br1 = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-        )
-        self.br2 = nn.Sequential(
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-        )
-        self.br3 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-        )
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-    def _make_layer(self, layer_gates, block, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(block(layer_gates[0], self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
-        for i in range(1, blocks):
-            layers.append(block(layer_gates[i], self.inplanes, planes))
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-
-        x1 = self.br1(x)
-        x1 = self.br2(x1)
-        x1 = self.br3(x1)
-
-        x2 = self.layer1(x)
-        x2 = self.layer2(x2)
-        x2 = self.layer3(x2)
-
-        x = x1 + x2
-
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
-    
-    def load_my_state_dict(self, state_dict):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            # if name not in own_state:
-            #     continue
-            # # if isinstance(param, Parameter):
-            # #     param = param.data
-            # own_state[name].copy_(param)
-            
-            if name in ['br1.0.weight', 'br2.0.weight', 'br3.0.weight']:
-                own_state[name].copy_(param)
             
 class ExtendedDoubleNetCifar(nn.Module):
 
@@ -248,92 +151,6 @@ class ExtendedDoubleNetCifar(nn.Module):
             if name in ['br1.0.weight', 'br2.0.weight', 'br3.0.weight']:
                 own_state[name].copy_(param)
 
-class DoubleNetIndepCifar(nn.Module):
-
-    def __init__(self, block, layers, num_classes=NUM_CLASSES):
-        self.nlayers = 0
-        # Each layer manages its own gates
-        self.layer_gates = []
-        for layer in range(3):
-            # For each of the 3 layers, create block gates: each block has two layers
-            self.layer_gates.append([])  # [True, True] * layers[layer])
-            for blk in range(layers[layer]):
-                self.layer_gates[layer].append([True, True])
-
-        self.inplanes = 16  # 64
-        super(DoubleNetIndepCifar, self).__init__()
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(self.layer_gates[0], block, 16, layers[0])
-        self.layer2 = self._make_layer(self.layer_gates[1], block, 32, layers[1], stride=2)
-        self.layer3 = self._make_layer(self.layer_gates[2], block, 64, layers[2], stride=2)
-        self.avgpool = nn.AvgPool2d(8, stride=1)
-        self.fc = nn.Linear(64 * block.expansion, num_classes)
-        self.br1 = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-        )
-        self.br2 = nn.Sequential(
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-        )
-        self.br3 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-        )
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-    def _make_layer(self, layer_gates, block, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(block(layer_gates[0], self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
-        for i in range(1, blocks):
-            layers.append(block(layer_gates[i], self.inplanes, planes))
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-
-        x1 = self.br1(x)
-        x2 = self.layer1(x)
-        x = x1 + x2
-
-        x1 = self.br2(x)
-        x2 = self.layer2(x)
-        x = x1 + x2
-
-        x1 = self.br3(x)
-        x2 = self.layer3(x)
-        x = x1 + x2
-
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
-
 class ExtendedDoubleNetIndepCifar(nn.Module):
 
     def __init__(self, block, layers, num_classes=NUM_CLASSES):
@@ -420,92 +237,6 @@ class ExtendedDoubleNetIndepCifar(nn.Module):
         x = x1 + x2
 
         x1 = self.br3(x)
-        x2 = self.layer3(x)
-        x = x1 + x2
-
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
-        x = self.fc(x)
-
-        return x
-
-class DoubleNetConnCifar(nn.Module):
-
-    def __init__(self, block, layers, num_classes=NUM_CLASSES):
-        self.nlayers = 0
-        # Each layer manages its own gates
-        self.layer_gates = []
-        for layer in range(3):
-            # For each of the 3 layers, create block gates: each block has two layers
-            self.layer_gates.append([])  # [True, True] * layers[layer])
-            for blk in range(layers[layer]):
-                self.layer_gates[layer].append([True, True])
-
-        self.inplanes = 16  # 64
-        super(DoubleNetConnCifar, self).__init__()
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(self.inplanes)
-        self.relu = nn.ReLU(inplace=True)
-        self.layer1 = self._make_layer(self.layer_gates[0], block, 16, layers[0])
-        self.layer2 = self._make_layer(self.layer_gates[1], block, 32, layers[1], stride=2)
-        self.layer3 = self._make_layer(self.layer_gates[2], block, 64, layers[2], stride=2)
-        self.avgpool = nn.AvgPool2d(8, stride=1)
-        self.fc = nn.Linear(64 * block.expansion, num_classes)
-        self.br1 = nn.Sequential(
-            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.BatchNorm2d(16),
-            nn.ReLU(inplace=True),
-        )
-        self.br2 = nn.Sequential(
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-        )
-        self.br3 = nn.Sequential(
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-        )
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-    def _make_layer(self, layer_gates, block, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(block(layer_gates[0], self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
-        for i in range(1, blocks):
-            layers.append(block(layer_gates[i], self.inplanes, planes))
-
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-
-        x1 = self.br1(x)
-        x2 = self.layer1(x)
-        x = x1 + x2
-
-        x1 = self.br2(x1)
-        x2 = self.layer2(x)
-        x = x1 + x2
-
-        x1 = self.br3(x1)
         x2 = self.layer3(x)
         x = x1 + x2
 
@@ -619,73 +350,80 @@ def update_ckpt(ckpt, weights_to_load):
     ckpt['state_dict'] = new_state_dict
     return ckpt
 
-def deepnet_load_state_dict(model, ckpt):
-    return model
-
-def doublenet_cifar(**kwargs):
-    model = DoubleNetCifar(BasicBlock, [3, 3, 3], *kwargs)
-    return model
-
 def extended_doublenet_cifar(**kwargs):
     model = ExtendedDoubleNetCifar(BasicBlock, [3, 3, 3], *kwargs)
     return model
 
 def extended_doublenet_cifar_shortcuts_pretrained(**kwargs):
     model = ExtendedDoubleNetCifar(BasicBlock, [3, 3, 3], *kwargs)
-    # pth = '/home/ru4n6/Documents/distiller/examples/classifier_compression/logs'
     pth = './logs'
-    ckpt = torch.load(os.path.join(pth, 'auxnet_baseline_training', 'best.pth.tar'))
-
+    ckpt = torch.load(os.path.join(pth, 'extended_auxnet_baseline', 'best.pth.tar'))
     weights_to_load = [
-        'br1.0.weight',
-        'br2.0.weight',
-        'br3.0.weight',
+        'module.br1.0.weight',
+        'module.br1.3.weight',
+        'module.br2.0.weight',
+        'module.br2.3.weight',
+        'module.br3.0.weight',
+        'module.br3.3.weight',
     ]
     ckpt = update_ckpt(ckpt, weights_to_load)
     model.load_state_dict(ckpt['state_dict'], strict=False)
+    for name in weights_to_load:
+        name = name.replace('module.', '')
+        if not torch.all(torch.eq(model.state_dict()[name], ckpt['state_dict'][name].cpu())):
+            print('something went wrong when loading the pretrained weights!')
+            sys.exit()
     print('pretrained weights loaded: {}'.format(ckpt['state_dict'].keys()))
     return model
 
-def doublenet_cifar_deepnet_pretrained(**kwargs):
-    model = DoubleNetCifar(BasicBlock, [3, 3, 3], *kwargs)
-
-    # load pretrained weights
-    pth = '/home/ru4n6/Documents/distiller/examples/classifier_compression/logs'
-    ckpt = torch.load(os.path.join(pth, 'resnet20-best-1/best.pth.tar'))
-    ckpt = update_ckpt(ckpt)
-    model.load_my_state_dict(ckpt['state_dict'])
-    return model
-
-def doublenet_cifar_shortcuts_pretrained(**kwargs):
-    model = DoubleNetCifar(BasicBlock, [3, 3, 3], *kwargs)
-
-    # load pretrained weights
-    # pth = '/home/ru4n6/Documents/distiller/examples/classifier_compression/logs'
-    # log_dir = 'auxnet_training___2021.05.06-014647'
-    # ckpt_name = 'auxnet_training_best.pth.tar'
-    # ckpt = torch.load(os.path.join(pth, log_dir, ckpt_name))
-
-    pth = '/home/ru4n6/Documents/distiller/examples/classifier_compression/logs'
-    ckpt = torch.load(pth, 'auxnet_baseline_training', 'best.pth.tar')
-
-    ckpt = update_ckpt(ckpt)
-    model.load_my_state_dict(ckpt['state_dict'])
-    return model
-
-def doublenet_indep_cifar(**kwargs):
-    pth = '/home/ru4n6/documents/distiller/examples/classifier_compression/logs'
-    model = DoubleNetIndepCifar(BasicBlock, [3, 3, 3], **kwargs)
-    return model
-
 def extended_doublenet_indep_cifar(**kwargs):
-    pth = '/home/ru4n6/documents/distiller/examples/classifier_compression/logs'
     model = ExtendedDoubleNetIndepCifar(BasicBlock, [3, 3, 3], **kwargs)
     return model
 
-def doublenet_conn_cifar(**kwargs):
-    model = DoubleNetConnCifar(BasicBlock, [3, 3, 3], **kwargs)
+def extended_doublenet_indep_cifar_shortcuts_pretrained(**kwargs):
+    model = ExtendedDoubleNetIndepCifar(BasicBlock, [3, 3, 3], **kwargs)
+    pth = './logs'
+    ckpt = torch.load(os.path.join(pth, 'extended_auxnet_baseline', 'best.pth.tar'))
+    weights_to_load = [
+        'module.br1.0.weight',
+        'module.br1.3.weight',
+        'module.br2.0.weight',
+        'module.br2.3.weight',
+        'module.br3.0.weight',
+        'module.br3.3.weight',
+    ]
+    ckpt = update_ckpt(ckpt, weights_to_load)
+    model.load_state_dict(ckpt['state_dict'], strict=False)
+    for name in weights_to_load:
+        name = name.replace('module.', '')
+        if not torch.all(torch.eq(model.state_dict()[name], ckpt['state_dict'][name].cpu())):
+            print('something went wrong when loading the pretrained weights!')
+            sys.exit()
+    print('pretrained weights loaded: {}'.format(ckpt['state_dict'].keys()))
     return model
 
 def extended_doublenet_conn_cifar(**kwargs):
     model = ExtendedDoubleNetConnCifar(BasicBlock, [3, 3, 3], **kwargs)
+    return model
+
+def extended_doublenet_conn_cifar_shortcuts_pretrained(**kwargs):
+    model = ExtendedDoubleNetConnCifar(BasicBlock, [3, 3, 3], **kwargs)
+    pth = './logs'
+    ckpt = torch.load(os.path.join(pth, 'extended_auxnet_baseline', 'best.pth.tar'))
+    weights_to_load = [
+        'module.br1.0.weight',
+        'module.br1.3.weight',
+        'module.br2.0.weight',
+        'module.br2.3.weight',
+        'module.br3.0.weight',
+        'module.br3.3.weight',
+    ]
+    ckpt = update_ckpt(ckpt, weights_to_load)
+    model.load_state_dict(ckpt['state_dict'], strict=False)
+    for name in weights_to_load:
+        name = name.replace('module.', '')
+        if not torch.all(torch.eq(model.state_dict()[name], ckpt['state_dict'][name].cpu())):
+            print('something went wrong when loading the pretrained weights!')
+            sys.exit()
+    print('pretrained weights loaded: {}'.format(ckpt['state_dict'].keys()))
     return model

@@ -24,3 +24,4 @@ from .resnet_cifar_earlyexit import *
 from .plain_cifar import *
 from .doublenet_cifar import *
 from .auxnet_cifar import *
+from .extended_doublenet_cifar import *

@@ -32,17 +32,29 @@ from tabulate import tabulate
 import distiller
 from distiller.apputils.checkpoint import get_contents_table
 
+import ipdb
 
 def print_sparsities(masks_dict):
     mask_sparsities = [(param_name, distiller.sparsity(mask)) for param_name, mask in masks_dict.items()
                        if mask is not None]
     print(tabulate(mask_sparsities, headers=["Module", "Mask Sparsity"], tablefmt="fancy_grid"))
 
+def print_weights(checkpoint, text_file):
+    with open(text_file, 'w+') as f:
+        pass
+    for name, weight in checkpoint['state_dict'].items():
+        if 'conv' in name:
+            for group in weight:
+                record = '{}: {}'.format(name, group.sum())
+                with open(text_file, 'a') as f:
+                    f.write(record+'\n')
 
 def inspect_checkpoint(chkpt_file, args):
     print("Inspecting checkpoint file: ", chkpt_file)
     # force loading on the CPU which always has more memory than the GPU(s)
     checkpoint = torch.load(chkpt_file, map_location='cpu')
+    if args.weights:
+        print_weights(checkpoint, 'weights.txt')
 
     print(get_contents_table(checkpoint))
 
@@ -80,5 +92,6 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--model', action='store_true', help='print the model keys')
     parser.add_argument('-s', '--schedule', action='store_true', help='print the schedule keys')
     parser.add_argument('-t', '--thinning', action='store_true', help='print the thinning keys')
+    parser.add_argument('--weights', action='store_true', help='check the weights')
     args = parser.parse_args()
     inspect_checkpoint(args.chkpt_file, args)
